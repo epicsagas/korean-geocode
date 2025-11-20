@@ -1,0 +1,171 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	_ "github.com/epicsagas/korean-geocode/docs/swagger" // swagger docs
+	handlerhttp "github.com/epicsagas/korean-geocode/internal/handler/http"
+	"github.com/epicsagas/korean-geocode/internal/infrastructure/breaker"
+	"github.com/epicsagas/korean-geocode/internal/infrastructure/config"
+	"github.com/epicsagas/korean-geocode/internal/infrastructure/ratelimit"
+	"github.com/epicsagas/korean-geocode/pkg/domain"
+	"github.com/epicsagas/korean-geocode/pkg/provider"
+	"github.com/epicsagas/korean-geocode/pkg/router"
+)
+
+// @title GeoCoding Hybrid API
+// @version 1.0
+// @description 고가용성 하이브리드 Geocoding 서비스 - Google Maps, Kakao Local, vWorld API 통합
+// @description
+// @description ## 주요 특징
+// @description - 🌏 하이브리드 전략: 비용 최적화 + 고가용성
+// @description - 🔄 Smart Router: 한글/영문 자동 감지 및 최적 Provider 선택
+// @description - ⚡ Circuit Breaker: 장애 격리 및 자동 복구
+// @description - 📊 Rate Limiting: 일일 쿼터 관리
+// @description - 🗺️ WGS84 통일: 모든 좌표계를 WGS84로 정규화
+// @description
+// @description ## Provider 우선순위
+// @description - 한글 주소: Kakao → vWorld → Google
+// @description - 영문 주소: Google → Kakao
+
+// @contact.name API Support
+// @contact.url https://github.com/epicsagas/korean-geocode/issues
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /
+// @schemes http https
+
+// @tag.name geocoding
+// @tag.description 주소-좌표 변환 API
+
+// @tag.name health
+// @tag.description 서버 상태 확인
+
+func main() {
+	// 설정 로드
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Rate Limiter 초기화 (Redis 미설정 시 SQLite 사용)
+	var rateLimiter ratelimit.RateLimiter
+	if cfg.RateLimiter.RedisHost == "" || cfg.RateLimiter.RedisHost == "localhost" {
+		// SQLite 사용
+		sqliteLimiter, err := ratelimit.NewSQLiteRateLimiter("./data")
+		if err != nil {
+			log.Fatalf("Failed to create SQLite rate limiter: %v", err)
+		}
+		defer sqliteLimiter.Close()
+
+		sqliteLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		if cfg.Naver.DailyQuota > 0 {
+			sqliteLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		}
+
+		rateLimiter = sqliteLimiter
+		log.Println("✅ SQLite Rate Limiter initialized (./data/ratelimit.db)")
+	} else {
+		// Memory 사용 (Redis 구현 추가 시 여기서 교체)
+		memoryLimiter := ratelimit.NewMemoryRateLimiter()
+		memoryLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		if cfg.Naver.DailyQuota > 0 {
+			memoryLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		}
+
+		rateLimiter = memoryLimiter
+		log.Printf("✅ Memory Rate Limiter initialized (Redis: %s:%s)", cfg.RateLimiter.RedisHost, cfg.RateLimiter.RedisPort)
+	}
+
+	// Provider 초기화 및 Circuit Breaker, Rate Limiter 적용
+	providersMap := make(map[string]domain.Geocoder)
+
+	if cfg.Google.APIKey != "" {
+		googleProvider := provider.NewGoogleProvider(cfg.Google.APIKey)
+		googleWithBreaker := breaker.NewCircuitBreakerWrapper(googleProvider, cfg.CircuitBreaker)
+		providersMap["google"] = googleWithBreaker
+		log.Println("✅ Google Maps Provider initialized")
+	}
+
+	if cfg.Kakao.APIKey != "" {
+		kakaoProvider := provider.NewKakaoProvider(cfg.Kakao.APIKey)
+		kakaoWithBreaker := breaker.NewCircuitBreakerWrapper(kakaoProvider, cfg.CircuitBreaker)
+		kakaoWithLimiter := ratelimit.NewRateLimiterWrapper(kakaoWithBreaker, rateLimiter)
+		providersMap["kakao"] = kakaoWithLimiter
+		log.Println("✅ Kakao Local Provider initialized")
+	}
+
+	if cfg.VWorld.APIKey != "" {
+		vworldProvider := provider.NewVWorldProvider(cfg.VWorld.APIKey)
+		vworldWithBreaker := breaker.NewCircuitBreakerWrapper(vworldProvider, cfg.CircuitBreaker)
+		providersMap["vworld"] = vworldWithBreaker
+		log.Println("✅ vWorld Provider initialized")
+	}
+
+	if cfg.Naver.ClientID != "" && cfg.Naver.ClientSecret != "" {
+		naverProvider := provider.NewNaverProvider(cfg.Naver.ClientID, cfg.Naver.ClientSecret)
+		naverWithBreaker := breaker.NewCircuitBreakerWrapper(naverProvider, cfg.CircuitBreaker)
+		naverWithLimiter := ratelimit.NewRateLimiterWrapper(naverWithBreaker, rateLimiter)
+		providersMap["naver"] = naverWithLimiter
+		log.Println("✅ Naver Maps Provider initialized")
+	}
+
+	if len(providersMap) == 0 {
+		log.Fatal("❌ No providers configured. Please set at least one API key.")
+	}
+
+	// Smart Router 초기화 (설정된 프로바이더 순서 사용)
+	smartRouter := router.NewSmartRouterWithOrder(
+		providersMap,
+		cfg.Server.Timeout,
+		cfg.KoreanProviderOrder,
+		cfg.GlobalProviderOrder,
+	)
+	log.Printf("✅ Smart Router initialized (Korean: %v, Global: %v)",
+		cfg.KoreanProviderOrder, cfg.GlobalProviderOrder)
+
+	// HTTP 라우트 설정 (새로운 Handler Layer 사용)
+	handler := handlerhttp.SetupRoutes(smartRouter)
+
+	// HTTP 서버 설정
+	server := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	// Graceful Shutdown 설정
+	go func() {
+		log.Printf("🚀 Server starting on port %s", cfg.Server.Port)
+		log.Printf("📚 Swagger UI: http://localhost:%s/swagger/", cfg.Server.Port)
+		log.Printf("📖 API Docs: http://localhost:%s/docs", cfg.Server.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	// 종료 시그널 대기
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("🛑 Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("✅ Server exited gracefully")
+}
