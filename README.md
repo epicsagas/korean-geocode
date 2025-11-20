@@ -1,6 +1,7 @@
 # Korean Geocoder
 
 [![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Reference](https://pkg.go.dev/badge/github.com/epicsagas/korean-geocode.svg)](https://pkg.go.dev/github.com/epicsagas/korean-geocode)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/epicsagas/korean-geocode)](https://goreportcard.com/report/github.com/epicsagas/korean-geocode)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
