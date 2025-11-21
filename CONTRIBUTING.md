@@ -261,7 +261,7 @@ go test -bench=. ./internal/router
 
 ## ⚖️ 라이선스
 
-기여한 코드는 프로젝트의 [MIT License](LICENSE)에 따라 배포됩니다.
+기여한 코드는 프로젝트의 [Apache License 2.0](LICENSE)에 따라 배포됩니다.
 
 ## 🙏 감사의 말
 
