@@ -57,21 +57,34 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Rate Limiter 초기화 (Redis 명시적 설정 시 Memory, 미설정 시 SQLite 사용)
+	// Rate Limiter 초기화 (Redis 명시적 설정 시 Redis, 미설정 시 SQLite 사용)
 	var rateLimiter ratelimit.RateLimiter
 	if cfg.RateLimiter.RedisHost != "" {
-		// Redis 설정이 있으면 Memory 사용 (Redis 구현 추가 시 여기서 교체)
-		memoryLimiter := ratelimit.NewMemoryRateLimiter()
-		if cfg.VWorld.DailyQuota > 0 {
-			memoryLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
+		// Redis 설정이 있으면 Redis 사용
+		redisLimiter, err := ratelimit.NewRedisRateLimiter(
+			cfg.RateLimiter.RedisHost,
+			cfg.RateLimiter.RedisPort,
+			cfg.RateLimiter.RedisPassword,
+			cfg.RateLimiter.RedisDB,
+		)
+		if err != nil {
+			log.Fatalf("Failed to create Redis rate limiter: %v", err)
 		}
-		memoryLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		defer redisLimiter.Close()
+
+		if cfg.VWorld.DailyQuota > 0 {
+			redisLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
+		}
+		redisLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
 		if cfg.Naver.DailyQuota > 0 {
-			memoryLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+			redisLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		}
+		if cfg.Google.MonthlyQuota > 0 {
+			redisLimiter.SetQuota("google", cfg.Google.MonthlyQuota)
 		}
 
-		rateLimiter = memoryLimiter
-		log.Printf("✅ Memory Rate Limiter initialized (Redis: %s:%s - Redis implementation pending)",
+		rateLimiter = redisLimiter
+		log.Printf("✅ Redis Rate Limiter initialized (%s:%s)",
 			cfg.RateLimiter.RedisHost, cfg.RateLimiter.RedisPort)
 	} else {
 		// Redis 미설정 시 SQLite 사용
@@ -87,6 +100,9 @@ func main() {
 		sqliteLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
 		if cfg.Naver.DailyQuota > 0 {
 			sqliteLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		}
+		if cfg.Google.MonthlyQuota > 0 {
+			sqliteLimiter.SetQuota("google", cfg.Google.MonthlyQuota)
 		}
 
 		rateLimiter = sqliteLimiter

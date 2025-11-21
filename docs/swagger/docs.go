@@ -36,7 +36,7 @@ const docTemplate = `{
                     "200": {
                         "description": "서버 정상 동작",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.Response"
+                            "$ref": "#/definitions/http.Response"
                         }
                     }
                 }
@@ -69,25 +69,25 @@ const docTemplate = `{
                     "200": {
                         "description": "성공적으로 좌표를 반환",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.Response"
+                            "$ref": "#/definitions/http.Response"
                         }
                     },
                     "400": {
                         "description": "잘못된 요청 (쿼리 파라미터 누락)",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.Response"
+                            "$ref": "#/definitions/http.Response"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류 또는 모든 Provider 실패",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.Response"
+                            "$ref": "#/definitions/http.Response"
                         }
                     },
                     "503": {
                         "description": "서비스 일시 중단 (Circuit Breaker Open)",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.Response"
+                            "$ref": "#/definitions/http.Response"
                         }
                     }
                 }
@@ -118,13 +118,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.QuotaResponse"
+                            "$ref": "#/definitions/http.QuotaResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler_http.QuotaResponse"
+                            "$ref": "#/definitions/http.QuotaResponse"
                         }
                     }
                 }
@@ -132,7 +132,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_handler_http.ErrorInfo": {
+        "http.ErrorInfo": {
             "type": "object",
             "properties": {
                 "code": {
@@ -146,7 +146,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handler_http.ProviderQuota": {
+        "http.ProviderQuota": {
             "type": "object",
             "properties": {
                 "provider": {
@@ -163,13 +163,13 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handler_http.QuotaResponse": {
+        "http.QuotaResponse": {
             "type": "object",
             "properties": {
                 "quotas": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handler_http.ProviderQuota"
+                        "$ref": "#/definitions/http.ProviderQuota"
                     }
                 },
                 "timestamp": {
@@ -177,12 +177,12 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handler_http.Response": {
+        "http.Response": {
             "type": "object",
             "properties": {
                 "data": {},
                 "error": {
-                    "$ref": "#/definitions/internal_handler_http.ErrorInfo"
+                    "$ref": "#/definitions/http.ErrorInfo"
                 },
                 "meta": {},
                 "success": {

@@ -27,8 +27,9 @@ func LoadConfig() (*Config, error) {
 			Timeout: viper.GetDuration("server.timeout"),
 		},
 		Google: ProviderConfig{
-			APIKey:  viper.GetString("google.api_key"),
-			Timeout: viper.GetDuration("google.timeout"),
+			APIKey:       viper.GetString("google.api_key"),
+			Timeout:      viper.GetDuration("google.timeout"),
+			MonthlyQuota: viper.GetInt("google.monthly_credit"),
 		},
 		Kakao: ProviderConfig{
 			APIKey:     viper.GetString("kakao.api_key"),
@@ -81,6 +82,7 @@ func setupViper() {
 
 	viper.BindEnv("google.api_key", "GOOGLE_MAPS_API_KEY")
 	viper.BindEnv("google.timeout", "GOOGLE_TIMEOUT")
+	viper.BindEnv("google.monthly_credit", "GOOGLE_MONTHLY_CREDIT")
 
 	viper.BindEnv("kakao.api_key", "KAKAO_REST_API_KEY")
 	viper.BindEnv("kakao.timeout", "KAKAO_TIMEOUT")
