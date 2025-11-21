@@ -521,11 +521,13 @@ korean-geocode/
 - ✅ 좌표 유효성 검증 (Lat: -90~90, Lng: -180~180)
 - ✅ Rate Limiting으로 서비스 남용 방지
 
-## 📊 모니터링 (Prometheus + Grafana)
+## 📊 모니터링
 
-실시간 쿼터 사용량 모니터링 시스템이 포함되어 있습니다.
+실시간 쿼터 사용량 모니터링을 위한 **두 가지 스택** 제공
 
-### 빠른 시작
+### Option 1: Prometheus + Grafana (권장)
+
+빠르고 가벼운 메트릭 모니터링
 
 ```bash
 # 1. API 서버 실행 (메트릭 자동 노출)
@@ -533,11 +535,37 @@ make run
 
 # 2. Prometheus + Grafana 실행
 cd monitoring
-docker-compose up -d
+docker-compose -f docker-compose.all.yml --profile prometheus up -d
 
 # 3. 대시보드 접속
 # Prometheus: http://localhost:9090
 # Grafana: http://localhost:3000 (admin/admin)
+```
+
+### Option 2: ELK Stack (Elasticsearch + Logstash + Kibana)
+
+강력한 검색 및 장기 보관
+
+```bash
+# 1. API 서버 실행
+make run
+
+# 2. ELK Stack 실행
+cd monitoring
+docker-compose -f docker-compose.all.yml --profile elk up -d
+
+# 3. 대시보드 접속
+# Elasticsearch: http://localhost:9200
+# Kibana: http://localhost:5601
+```
+
+### Option 3: 두 스택 모두 실행
+
+```bash
+cd monitoring
+docker-compose -f docker-compose.all.yml --profile all up -d
+# 또는
+docker-compose -f docker-compose.all.yml up -d
 ```
 
 ### 제공 메트릭
@@ -549,19 +577,25 @@ docker-compose up -d
 | `geocode_quota_remaining` | Provider별 남은 쿼터 |
 | `geocode_quota_utilization_percent` | Provider별 사용률 (0-100%) |
 
-### 자동 알림
+### 자동 알림 (Prometheus)
 
 - **Warning**: 쿼터 사용률 80% 이상 (5분 지속)
 - **Critical**: 쿼터 사용률 95% 이상 (2분 지속)
 - **Warning**: 남은 쿼터 1000개 미만 (5분 지속)
 
-### Grafana 대시보드
+### 대시보드
 
-자동으로 프로비저닝되는 대시보드 포함:
-- Provider별 실시간 사용률 게이지
-- 시간별 사용량 추세 그래프
-- 남은 쿼터 모니터링
+**Grafana**: 자동 프로비저닝되는 대시보드
+- Provider별 실시간 사용률 게이지 (4개)
+- 시간별 사용량/남은 쿼터 추세 그래프
 - 전체 Provider 상태 테이블
+
+**Kibana**: Import 가능한 대시보드 (elk/kibana/dashboard.ndjson)
+- Quota Total Gauge
+- Usage Trends Line Chart
+- Remaining Quota Area Chart
+- Quota Utilization Bar Chart
+- Provider Status Table
 
 자세한 내용은 [monitoring/README.md](monitoring/README.md)를 참조하세요.
 
