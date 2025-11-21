@@ -4,20 +4,23 @@ import (
 	"net/http"
 
 	"github.com/epicsagas/korean-geocode/internal/handler/middleware"
+	"github.com/epicsagas/korean-geocode/internal/infrastructure/ratelimit"
 	"github.com/epicsagas/korean-geocode/pkg/router"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // SetupRoutes는 HTTP 라우트를 설정합니다
-func SetupRoutes(smartRouter *router.SmartRouter) http.Handler {
+func SetupRoutes(smartRouter *router.SmartRouter, rateLimiter ratelimit.RateLimiter) http.Handler {
 	mux := http.NewServeMux()
 
 	// 핸들러 초기화
 	geocodeHandler := NewGeocodeHandler(smartRouter)
 	healthHandler := NewHealthHandler(smartRouter)
+	quotaHandler := NewQuotaHandler(rateLimiter)
 
 	// 라우트 등록
 	mux.HandleFunc("/v1/geocode", geocodeHandler.Handle)
+	mux.HandleFunc("/v1/quota", quotaHandler.Handle)
 	mux.HandleFunc("/health", healthHandler.Handle)
 
 	// Swagger UI

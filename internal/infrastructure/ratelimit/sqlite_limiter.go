@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,6 +27,11 @@ func NewSQLiteRateLimiter(dataDir string) (*SQLiteRateLimiter, error) {
 	// 데이터 디렉토리가 비어있으면 현재 디렉토리 사용
 	if dataDir == "" {
 		dataDir = "."
+	}
+
+	// 데이터 디렉토리 생성 (존재하지 않을 경우)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	dbPath := filepath.Join(dataDir, "ratelimit.db")
@@ -152,6 +158,23 @@ func (s *SQLiteRateLimiter) GetUsage(ctx context.Context, provider string) (int,
 	}
 
 	return usage, nil
+}
+
+// GetQuota는 설정된 쿼터를 반환합니다
+func (s *SQLiteRateLimiter) GetQuota(ctx context.Context, provider string) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var quota int
+	err := s.db.QueryRow("SELECT quota FROM rate_limits WHERE provider = ?", provider).Scan(&quota)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	return quota, nil
 }
 
 // Reset은 쿼터를 수동으로 초기화합니다

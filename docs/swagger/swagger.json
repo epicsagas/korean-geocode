@@ -34,7 +34,7 @@
                     "200": {
                         "description": "서버 정상 동작",
                         "schema": {
-                            "$ref": "#/definitions/http.Response"
+                            "$ref": "#/definitions/internal_handler_http.Response"
                         }
                     }
                 }
@@ -67,25 +67,62 @@
                     "200": {
                         "description": "성공적으로 좌표를 반환",
                         "schema": {
-                            "$ref": "#/definitions/http.Response"
+                            "$ref": "#/definitions/internal_handler_http.Response"
                         }
                     },
                     "400": {
                         "description": "잘못된 요청 (쿼리 파라미터 누락)",
                         "schema": {
-                            "$ref": "#/definitions/http.Response"
+                            "$ref": "#/definitions/internal_handler_http.Response"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류 또는 모든 Provider 실패",
                         "schema": {
-                            "$ref": "#/definitions/http.Response"
+                            "$ref": "#/definitions/internal_handler_http.Response"
                         }
                     },
                     "503": {
                         "description": "서비스 일시 중단 (Circuit Breaker Open)",
                         "schema": {
-                            "$ref": "#/definitions/http.Response"
+                            "$ref": "#/definitions/internal_handler_http.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quota": {
+            "get": {
+                "description": "Provider별 현재 쿼터 사용량을 조회합니다",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quota"
+                ],
+                "summary": "쿼터 조회",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "특정 Provider 조회 (vworld, kakao, naver, google)",
+                        "name": "provider",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler_http.QuotaResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler_http.QuotaResponse"
                         }
                     }
                 }
@@ -93,7 +130,7 @@
         }
     },
     "definitions": {
-        "http.ErrorInfo": {
+        "internal_handler_http.ErrorInfo": {
             "type": "object",
             "properties": {
                 "code": {
@@ -107,12 +144,43 @@
                 }
             }
         },
-        "http.Response": {
+        "internal_handler_http.ProviderQuota": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string"
+                },
+                "quota": {
+                    "type": "integer"
+                },
+                "remaining": {
+                    "type": "integer"
+                },
+                "usage": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler_http.QuotaResponse": {
+            "type": "object",
+            "properties": {
+                "quotas": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler_http.ProviderQuota"
+                    }
+                },
+                "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler_http.Response": {
             "type": "object",
             "properties": {
                 "data": {},
                 "error": {
-                    "$ref": "#/definitions/http.ErrorInfo"
+                    "$ref": "#/definitions/internal_handler_http.ErrorInfo"
                 },
                 "meta": {},
                 "success": {

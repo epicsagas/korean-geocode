@@ -36,8 +36,9 @@ func LoadConfig() (*Config, error) {
 			DailyQuota: viper.GetInt("kakao.daily_quota"),
 		},
 		VWorld: ProviderConfig{
-			APIKey:  viper.GetString("vworld.api_key"),
-			Timeout: viper.GetDuration("vworld.timeout"),
+			APIKey:     viper.GetString("vworld.api_key"),
+			Timeout:    viper.GetDuration("vworld.timeout"),
+			DailyQuota: viper.GetInt("vworld.daily_quota"),
 		},
 		Naver: NaverConfig{
 			ClientID:     viper.GetString("naver.client_id"),
@@ -87,6 +88,7 @@ func setupViper() {
 
 	viper.BindEnv("vworld.api_key", "VWORLD_API_KEY")
 	viper.BindEnv("vworld.timeout", "VWORLD_TIMEOUT")
+	viper.BindEnv("vworld.daily_quota", "VWORLD_DAILY_QUOTA")
 
 	viper.BindEnv("naver.client_id", "NAVER_CLIENT_ID")
 	viper.BindEnv("naver.client_secret", "NAVER_CLIENT_SECRET")
@@ -122,6 +124,7 @@ func setDefaults() {
 	viper.SetDefault("naver.timeout", 2*time.Second)
 
 	// Provider quotas
+	viper.SetDefault("vworld.daily_quota", 100000)
 	viper.SetDefault("kakao.daily_quota", 300000)
 	viper.SetDefault("naver.daily_quota", 100000)
 
@@ -130,8 +133,8 @@ func setDefaults() {
 	viper.SetDefault("circuit_breaker.failure_threshold", 5)
 	viper.SetDefault("circuit_breaker.timeout", 60*time.Second)
 
-	// Redis defaults
-	viper.SetDefault("redis.host", "localhost")
+	// Redis defaults - 기본값을 설정하지 않아 명시적 설정 시에만 사용
+	// viper.SetDefault("redis.host", "localhost")
 	viper.SetDefault("redis.port", "6379")
 	viper.SetDefault("redis.password", "")
 	viper.SetDefault("redis.db", 0)

@@ -17,6 +17,9 @@ type RateLimiter interface {
 	// GetUsage는 현재 사용량을 반환합니다
 	GetUsage(ctx context.Context, provider string) (int, error)
 
+	// GetQuota는 설정된 쿼터를 반환합니다
+	GetQuota(ctx context.Context, provider string) (int, error)
+
 	// Reset은 쿼터를 초기화합니다
 	Reset(ctx context.Context, provider string) error
 }
@@ -87,6 +90,19 @@ func (m *MemoryRateLimiter) GetUsage(ctx context.Context, provider string) (int,
 	}
 
 	return usage, nil
+}
+
+// GetQuota는 설정된 쿼터를 반환합니다
+func (m *MemoryRateLimiter) GetQuota(ctx context.Context, provider string) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	quota, exists := m.quotas[provider]
+	if !exists {
+		return 0, nil
+	}
+
+	return quota, nil
 }
 
 // Reset은 쿼터를 수동으로 초기화합니다

@@ -57,16 +57,33 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Rate Limiter 초기화 (Redis 미설정 시 SQLite 사용)
+	// Rate Limiter 초기화 (Redis 명시적 설정 시 Memory, 미설정 시 SQLite 사용)
 	var rateLimiter ratelimit.RateLimiter
-	if cfg.RateLimiter.RedisHost == "" || cfg.RateLimiter.RedisHost == "localhost" {
-		// SQLite 사용
+	if cfg.RateLimiter.RedisHost != "" {
+		// Redis 설정이 있으면 Memory 사용 (Redis 구현 추가 시 여기서 교체)
+		memoryLimiter := ratelimit.NewMemoryRateLimiter()
+		if cfg.VWorld.DailyQuota > 0 {
+			memoryLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
+		}
+		memoryLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		if cfg.Naver.DailyQuota > 0 {
+			memoryLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		}
+
+		rateLimiter = memoryLimiter
+		log.Printf("✅ Memory Rate Limiter initialized (Redis: %s:%s - Redis implementation pending)",
+			cfg.RateLimiter.RedisHost, cfg.RateLimiter.RedisPort)
+	} else {
+		// Redis 미설정 시 SQLite 사용
 		sqliteLimiter, err := ratelimit.NewSQLiteRateLimiter("./data")
 		if err != nil {
 			log.Fatalf("Failed to create SQLite rate limiter: %v", err)
 		}
 		defer sqliteLimiter.Close()
 
+		if cfg.VWorld.DailyQuota > 0 {
+			sqliteLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
+		}
 		sqliteLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
 		if cfg.Naver.DailyQuota > 0 {
 			sqliteLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
@@ -74,16 +91,6 @@ func main() {
 
 		rateLimiter = sqliteLimiter
 		log.Println("✅ SQLite Rate Limiter initialized (./data/ratelimit.db)")
-	} else {
-		// Memory 사용 (Redis 구현 추가 시 여기서 교체)
-		memoryLimiter := ratelimit.NewMemoryRateLimiter()
-		memoryLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
-		if cfg.Naver.DailyQuota > 0 {
-			memoryLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
-		}
-
-		rateLimiter = memoryLimiter
-		log.Printf("✅ Memory Rate Limiter initialized (Redis: %s:%s)", cfg.RateLimiter.RedisHost, cfg.RateLimiter.RedisPort)
 	}
 
 	// Provider 초기화 및 Circuit Breaker, Rate Limiter 적용
@@ -107,7 +114,8 @@ func main() {
 	if cfg.VWorld.APIKey != "" {
 		vworldProvider := provider.NewVWorldProvider(cfg.VWorld.APIKey)
 		vworldWithBreaker := breaker.NewCircuitBreakerWrapper(vworldProvider, cfg.CircuitBreaker)
-		providersMap["vworld"] = vworldWithBreaker
+		vworldWithLimiter := ratelimit.NewRateLimiterWrapper(vworldWithBreaker, rateLimiter)
+		providersMap["vworld"] = vworldWithLimiter
 		log.Println("✅ vWorld Provider initialized")
 	}
 
@@ -134,7 +142,7 @@ func main() {
 		cfg.KoreanProviderOrder, cfg.GlobalProviderOrder)
 
 	// HTTP 라우트 설정 (새로운 Handler Layer 사용)
-	handler := handlerhttp.SetupRoutes(smartRouter)
+	handler := handlerhttp.SetupRoutes(smartRouter, rateLimiter)
 
 	// HTTP 서버 설정
 	server := &http.Server{
