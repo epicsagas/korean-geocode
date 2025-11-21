@@ -4,7 +4,6 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/epicsagas/korean-geocode.svg)](https://pkg.go.dev/github.com/epicsagas/korean-geocode)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/epicsagas/korean-geocode)](https://goreportcard.com/report/github.com/epicsagas/korean-geocode)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
 
 **한국 주소에 최적화된 하이브리드 Geocoding 라이브러리** - Google Maps, Kakao Local, Naver Maps, vWorld API를 통합하여 비용 효율적이고 고가용성을 제공합니다.
 
