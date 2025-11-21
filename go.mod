@@ -2,6 +2,8 @@ module github.com/epicsagas/korean-geocode
 
 go 1.24.0
 
+// License: Apache-2.0
+
 toolchain go1.24.10
 
 require (
