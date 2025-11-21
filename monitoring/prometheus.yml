@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 10m # 10분마다 메트릭 수집
+  evaluation_interval: 10m # 10분마다 규칙 평가
+  external_labels:
+    monitor: 'korean-geocode-monitor'
+
+# 알림 규칙
+rule_files:
+  - 'alert_rules.yml'
+
+# 메트릭 수집 대상
+scrape_configs:
+  # Korean Geocode API
+  - job_name: 'korean-geocode'
+    static_configs:
+      - targets: ['host.docker.internal:8080'] # Mac/Windows Docker
+        labels:
+          service: 'geocode-api'
+          environment: 'production'
+
+    # 메트릭 경로
+    metrics_path: '/metrics'
+
+    # 수집 간격 (기본값 30s 사용, 필요시 조정 가능)
+    # scrape_interval: 30s

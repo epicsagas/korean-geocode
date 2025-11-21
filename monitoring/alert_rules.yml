@@ -1,0 +1,33 @@
+groups:
+  - name: geocode_alerts
+    interval: 30s
+    rules:
+      # 쿼터 사용률 80% 이상 경고
+      - alert: HighQuotaUsage
+        expr: geocode_quota_utilization_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quota usage for {{ $labels.provider }}"
+          description: "{{ $labels.provider }} quota usage is at {{ $value }}%"
+
+      # 쿼터 사용률 95% 이상 위험
+      - alert: CriticalQuotaUsage
+        expr: geocode_quota_utilization_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical quota usage for {{ $labels.provider }}"
+          description: "{{ $labels.provider }} quota usage is at {{ $value }}%. Immediate action required!"
+
+      # 남은 쿼터 1000개 미만
+      - alert: LowQuotaRemaining
+        expr: geocode_quota_remaining < 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low quota remaining for {{ $labels.provider }}"
+          description: "Only {{ $value }} requests remaining for {{ $labels.provider }}"

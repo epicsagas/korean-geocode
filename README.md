@@ -521,6 +521,50 @@ korean-geocode/
 - ✅ 좌표 유효성 검증 (Lat: -90~90, Lng: -180~180)
 - ✅ Rate Limiting으로 서비스 남용 방지
 
+## 📊 모니터링 (Prometheus + Grafana)
+
+실시간 쿼터 사용량 모니터링 시스템이 포함되어 있습니다.
+
+### 빠른 시작
+
+```bash
+# 1. API 서버 실행 (메트릭 자동 노출)
+make run
+
+# 2. Prometheus + Grafana 실행
+cd monitoring
+docker-compose up -d
+
+# 3. 대시보드 접속
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
+```
+
+### 제공 메트릭
+
+| 메트릭 | 설명 |
+|--------|------|
+| `geocode_quota_total` | Provider별 총 일일 쿼터 |
+| `geocode_usage_total` | Provider별 현재 사용량 |
+| `geocode_quota_remaining` | Provider별 남은 쿼터 |
+| `geocode_quota_utilization_percent` | Provider별 사용률 (0-100%) |
+
+### 자동 알림
+
+- **Warning**: 쿼터 사용률 80% 이상 (5분 지속)
+- **Critical**: 쿼터 사용률 95% 이상 (2분 지속)
+- **Warning**: 남은 쿼터 1000개 미만 (5분 지속)
+
+### Grafana 대시보드
+
+자동으로 프로비저닝되는 대시보드 포함:
+- Provider별 실시간 사용률 게이지
+- 시간별 사용량 추세 그래프
+- 남은 쿼터 모니터링
+- 전체 Provider 상태 테이블
+
+자세한 내용은 [monitoring/README.md](monitoring/README.md)를 참조하세요.
+
 ## 🧪 테스트
 
 ```bash
@@ -647,6 +691,28 @@ func main() {
 ```
 
 For detailed documentation, see [USAGE.md](USAGE.md).
+
+## Monitoring (Prometheus + Grafana)
+
+Real-time quota usage monitoring system included.
+
+```bash
+# 1. Start API server (metrics auto-exposed)
+make run
+
+# 2. Start Prometheus + Grafana
+cd monitoring
+docker-compose up -d
+
+# 3. Access dashboards
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
+```
+
+**Metrics**: quota_total, usage_total, quota_remaining, utilization_percent
+**Alerts**: 80% warning, 95% critical, low remaining quota
+
+See [monitoring/README.md](monitoring/README.md) for details.
 
 ## License
 

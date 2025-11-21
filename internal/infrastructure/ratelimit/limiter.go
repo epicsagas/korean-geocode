@@ -22,6 +22,9 @@ type RateLimiter interface {
 
 	// Reset은 쿼터를 초기화합니다
 	Reset(ctx context.Context, provider string) error
+
+	// CleanupOldData는 지정한 일자 이전의 데이터를 삭제합니다
+	CleanupOldData(ctx context.Context, beforeDate string) (int, error)
 }
 
 // MemoryRateLimiter는 메모리 기반 Rate Limiter입니다
@@ -121,6 +124,11 @@ func (m *MemoryRateLimiter) getNextMidnight() time.Time {
 	year, month, day := now.Date()
 	midnight := time.Date(year, month, day+1, 0, 0, 0, 0, now.Location())
 	return midnight
+}
+
+// CleanupOldData는 메모리 기반이므로 항상 0을 반환합니다 (자동 정리됨)
+func (m *MemoryRateLimiter) CleanupOldData(ctx context.Context, beforeDate string) (int, error) {
+	return 0, nil
 }
 
 // RateLimiterWrapper는 Geocoder를 Rate Limiter로 감싸는 래퍼입니다

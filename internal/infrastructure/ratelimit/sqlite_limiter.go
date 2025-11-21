@@ -42,14 +42,18 @@ func NewSQLiteRateLimiter(dataDir string) (*SQLiteRateLimiter, error) {
 		return nil, fmt.Errorf("failed to open SQLite database: %w", err)
 	}
 
-	// 테이블 생성
+	// 테이블 생성 (date 컬럼 추가)
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS rate_limits (
-			provider TEXT PRIMARY KEY,
+			provider TEXT NOT NULL,
+			date TEXT NOT NULL,
 			quota INTEGER NOT NULL,
 			usage INTEGER NOT NULL DEFAULT 0,
-			reset_at TIMESTAMP NOT NULL
-		)
+			reset_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (provider, date)
+		);
+		CREATE INDEX IF NOT EXISTS idx_provider_date ON rate_limits(provider, date);
+		CREATE INDEX IF NOT EXISTS idx_reset_at ON rate_limits(reset_at);
 	`)
 	if err != nil {
 		db.Close()
@@ -72,16 +76,17 @@ func (s *SQLiteRateLimiter) SetQuota(provider string, quota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	today := time.Now().Format("2006-01-02")
 	resetAt := s.getNextMidnight()
 
 	_, err := s.db.Exec(`
-		INSERT INTO rate_limits (provider, quota, usage, reset_at)
-		VALUES (?, ?, 0, ?)
-		ON CONFLICT(provider) DO UPDATE SET
+		INSERT INTO rate_limits (provider, date, quota, usage, reset_at)
+		VALUES (?, ?, ?, 0, ?)
+		ON CONFLICT(provider, date) DO UPDATE SET
 			quota = excluded.quota,
 			usage = 0,
 			reset_at = excluded.reset_at
-	`, provider, quota, resetAt)
+	`, provider, today, quota, resetAt)
 
 	return err
 }
@@ -90,6 +95,8 @@ func (s *SQLiteRateLimiter) SetQuota(provider string, quota int) error {
 func (s *SQLiteRateLimiter) Allow(ctx context.Context, provider string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	today := time.Now().Format("2006-01-02")
 
 	// 트랜잭션 시작
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -101,7 +108,7 @@ func (s *SQLiteRateLimiter) Allow(ctx context.Context, provider string) (bool, e
 	// 현재 데이터 조회
 	var quota, usage int
 	var resetAt time.Time
-	err = tx.QueryRow("SELECT quota, usage, reset_at FROM rate_limits WHERE provider = ?", provider).
+	err = tx.QueryRow("SELECT quota, usage, reset_at FROM rate_limits WHERE provider = ? AND date = ?", provider, today).
 		Scan(&quota, &usage, &resetAt)
 
 	if err == sql.ErrNoRows {
@@ -118,7 +125,7 @@ func (s *SQLiteRateLimiter) Allow(ctx context.Context, provider string) (bool, e
 		usage = 0
 		resetAt = s.getNextMidnight()
 
-		_, err = tx.Exec("UPDATE rate_limits SET usage = 0, reset_at = ? WHERE provider = ?", resetAt, provider)
+		_, err = tx.Exec("UPDATE rate_limits SET usage = 0, reset_at = ? WHERE provider = ? AND date = ?", resetAt, provider, today)
 		if err != nil {
 			return false, err
 		}
@@ -130,7 +137,7 @@ func (s *SQLiteRateLimiter) Allow(ctx context.Context, provider string) (bool, e
 	}
 
 	// 사용량 증가
-	_, err = tx.Exec("UPDATE rate_limits SET usage = usage + 1 WHERE provider = ?", provider)
+	_, err = tx.Exec("UPDATE rate_limits SET usage = usage + 1 WHERE provider = ? AND date = ?", provider, today)
 	if err != nil {
 		return false, err
 	}
@@ -148,8 +155,9 @@ func (s *SQLiteRateLimiter) GetUsage(ctx context.Context, provider string) (int,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	today := time.Now().Format("2006-01-02")
 	var usage int
-	err := s.db.QueryRow("SELECT usage FROM rate_limits WHERE provider = ?", provider).Scan(&usage)
+	err := s.db.QueryRow("SELECT usage FROM rate_limits WHERE provider = ? AND date = ?", provider, today).Scan(&usage)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
@@ -165,8 +173,9 @@ func (s *SQLiteRateLimiter) GetQuota(ctx context.Context, provider string) (int,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	today := time.Now().Format("2006-01-02")
 	var quota int
-	err := s.db.QueryRow("SELECT quota FROM rate_limits WHERE provider = ?", provider).Scan(&quota)
+	err := s.db.QueryRow("SELECT quota FROM rate_limits WHERE provider = ? AND date = ?", provider, today).Scan(&quota)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
@@ -182,9 +191,10 @@ func (s *SQLiteRateLimiter) Reset(ctx context.Context, provider string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	today := time.Now().Format("2006-01-02")
 	resetAt := s.getNextMidnight()
 
-	_, err := s.db.Exec("UPDATE rate_limits SET usage = 0, reset_at = ? WHERE provider = ?", resetAt, provider)
+	_, err := s.db.Exec("UPDATE rate_limits SET usage = 0, reset_at = ? WHERE provider = ? AND date = ?", resetAt, provider, today)
 	return err
 }
 
@@ -204,9 +214,27 @@ func (s *SQLiteRateLimiter) getNextMidnight() time.Time {
 	return midnight
 }
 
-// cleanupExpiredData는 오래된 리셋 데이터를 정리합니다
+// cleanupExpiredData는 오래된 리셋 데이터를 정리합니다 (시작 시 자동 호출)
 func (s *SQLiteRateLimiter) cleanupExpiredData() {
 	// 7일 이상 지난 데이터 삭제
-	threshold := time.Now().AddDate(0, 0, -7)
-	s.db.Exec("DELETE FROM rate_limits WHERE reset_at < ?", threshold)
+	threshold := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	s.db.Exec("DELETE FROM rate_limits WHERE date < ?", threshold)
+}
+
+// CleanupOldData는 지정한 일자 이전의 데이터를 삭제합니다
+func (s *SQLiteRateLimiter) CleanupOldData(ctx context.Context, beforeDate string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result, err := s.db.ExecContext(ctx, "DELETE FROM rate_limits WHERE date < ?", beforeDate)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(rowsAffected), nil
 }

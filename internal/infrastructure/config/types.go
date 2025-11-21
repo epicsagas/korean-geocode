@@ -11,6 +11,7 @@ type Config struct {
 	Naver               NaverConfig
 	CircuitBreaker      CircuitBreakerConfig
 	RateLimiter         RateLimiterConfig
+	Analytics           AnalyticsConfig
 	KoreanProviderOrder []string // 한국 주소용 프로바이더 순서
 	GlobalProviderOrder []string // 해외 주소용 프로바이더 순서
 }
@@ -51,4 +52,11 @@ type RateLimiterConfig struct {
 	RedisPort     string
 	RedisPassword string
 	RedisDB       int
+}
+
+// AnalyticsConfig는 Analytics DB 설정입니다
+type AnalyticsConfig struct {
+	Driver        string // sqlite, mysql, postgres
+	DSN           string // Data Source Name
+	RetentionDays int    // 0 = unlimited
 }

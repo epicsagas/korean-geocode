@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/epicsagas/korean-geocode/pkg/domain"
@@ -36,34 +37,38 @@ func NewRedisRateLimiter(host, port, password string, db int) (*RedisRateLimiter
 // SetQuota는 Provider의 일일 쿼터를 설정합니다
 func (r *RedisRateLimiter) SetQuota(provider string, quota int) error {
 	ctx := context.Background()
-	quotaKey := fmt.Sprintf("ratelimit:%s:quota", provider)
-	usageKey := fmt.Sprintf("ratelimit:%s:usage", provider)
-	resetKey := fmt.Sprintf("ratelimit:%s:reset_at", provider)
+	today := time.Now().Format("2006-01-02")
+	quotaKey := fmt.Sprintf("ratelimit:%s:%s:quota", provider, today)
+	usageKey := fmt.Sprintf("ratelimit:%s:%s:usage", provider, today)
+	resetKey := fmt.Sprintf("ratelimit:%s:%s:reset_at", provider, today)
 
-	// 쿼터 설정
-	if err := r.client.Set(ctx, quotaKey, quota, 0).Err(); err != nil {
+	// 다음 자정까지 TTL 계산
+	ttl := time.Until(getNextMidnight())
+
+	// 쿼터 설정 (TTL 적용)
+	if err := r.client.Set(ctx, quotaKey, quota, ttl).Err(); err != nil {
 		return err
 	}
 
-	// 사용량 초기화 (키가 없을 때만)
+	// 사용량 초기화 (키가 없을 때만, TTL 적용)
 	exists, err := r.client.Exists(ctx, usageKey).Result()
 	if err != nil {
 		return err
 	}
 	if exists == 0 {
-		if err := r.client.Set(ctx, usageKey, 0, 0).Err(); err != nil {
+		if err := r.client.Set(ctx, usageKey, 0, ttl).Err(); err != nil {
 			return err
 		}
 	}
 
-	// 리셋 시간 설정 (키가 없을 때만)
+	// 리셋 시간 설정 (키가 없을 때만, TTL 적용)
 	exists, err = r.client.Exists(ctx, resetKey).Result()
 	if err != nil {
 		return err
 	}
 	if exists == 0 {
 		resetAt := getNextMidnight()
-		if err := r.client.Set(ctx, resetKey, resetAt.Unix(), 0).Err(); err != nil {
+		if err := r.client.Set(ctx, resetKey, resetAt.Unix(), ttl).Err(); err != nil {
 			return err
 		}
 	}
@@ -73,9 +78,10 @@ func (r *RedisRateLimiter) SetQuota(provider string, quota int) error {
 
 // Allow는 요청이 쿼터 내에 있는지 확인하고, 카운터를 증가시킵니다
 func (r *RedisRateLimiter) Allow(ctx context.Context, provider string) (bool, error) {
-	quotaKey := fmt.Sprintf("ratelimit:%s:quota", provider)
-	usageKey := fmt.Sprintf("ratelimit:%s:usage", provider)
-	resetKey := fmt.Sprintf("ratelimit:%s:reset_at", provider)
+	today := time.Now().Format("2006-01-02")
+	quotaKey := fmt.Sprintf("ratelimit:%s:%s:quota", provider, today)
+	usageKey := fmt.Sprintf("ratelimit:%s:%s:usage", provider, today)
+	resetKey := fmt.Sprintf("ratelimit:%s:%s:reset_at", provider, today)
 
 	// 쿼터 조회
 	quota, err := r.client.Get(ctx, quotaKey).Int()
@@ -124,7 +130,8 @@ func (r *RedisRateLimiter) Allow(ctx context.Context, provider string) (bool, er
 
 // GetUsage는 현재 사용량을 반환합니다
 func (r *RedisRateLimiter) GetUsage(ctx context.Context, provider string) (int, error) {
-	usageKey := fmt.Sprintf("ratelimit:%s:usage", provider)
+	today := time.Now().Format("2006-01-02")
+	usageKey := fmt.Sprintf("ratelimit:%s:%s:usage", provider, today)
 	usage, err := r.client.Get(ctx, usageKey).Int()
 	if err == redis.Nil {
 		return 0, nil
@@ -134,7 +141,8 @@ func (r *RedisRateLimiter) GetUsage(ctx context.Context, provider string) (int, 
 
 // GetQuota는 설정된 쿼터를 반환합니다
 func (r *RedisRateLimiter) GetQuota(ctx context.Context, provider string) (int, error) {
-	quotaKey := fmt.Sprintf("ratelimit:%s:quota", provider)
+	today := time.Now().Format("2006-01-02")
+	quotaKey := fmt.Sprintf("ratelimit:%s:%s:quota", provider, today)
 	quota, err := r.client.Get(ctx, quotaKey).Int()
 	if err == redis.Nil {
 		return 0, nil
@@ -144,8 +152,9 @@ func (r *RedisRateLimiter) GetQuota(ctx context.Context, provider string) (int, 
 
 // Reset은 쿼터를 수동으로 초기화합니다
 func (r *RedisRateLimiter) Reset(ctx context.Context, provider string) error {
-	usageKey := fmt.Sprintf("ratelimit:%s:usage", provider)
-	resetKey := fmt.Sprintf("ratelimit:%s:reset_at", provider)
+	today := time.Now().Format("2006-01-02")
+	usageKey := fmt.Sprintf("ratelimit:%s:%s:usage", provider, today)
+	resetKey := fmt.Sprintf("ratelimit:%s:%s:reset_at", provider, today)
 
 	if err := r.client.Set(ctx, usageKey, 0, 0).Err(); err != nil {
 		return err
@@ -166,4 +175,40 @@ func getNextMidnight() time.Time {
 	year, month, day := now.Date()
 	midnight := time.Date(year, month, day+1, 0, 0, 0, 0, now.Location())
 	return midnight
+}
+
+// CleanupOldData는 지정한 일자 이전의 데이터를 삭제합니다
+func (r *RedisRateLimiter) CleanupOldData(ctx context.Context, beforeDate string) (int, error) {
+	// Redis는 패턴 매칭으로 모든 키를 찾아야 함
+	pattern := "ratelimit:*:*:*"
+	var cursor uint64
+	deletedCount := 0
+
+	for {
+		keys, nextCursor, err := r.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return deletedCount, err
+		}
+
+		// 각 키에서 날짜 추출 및 삭제
+		for _, key := range keys {
+			// ratelimit:provider:YYYY-MM-DD:type 형식
+			parts := strings.Split(key, ":")
+			if len(parts) >= 3 {
+				keyDate := parts[2]
+				if keyDate < beforeDate {
+					if err := r.client.Del(ctx, key).Err(); err == nil {
+						deletedCount++
+					}
+				}
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return deletedCount, nil
 }

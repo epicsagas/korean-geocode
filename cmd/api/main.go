@@ -13,6 +13,7 @@ import (
 	handlerhttp "github.com/epicsagas/korean-geocode/internal/handler/http"
 	"github.com/epicsagas/korean-geocode/internal/infrastructure/breaker"
 	"github.com/epicsagas/korean-geocode/internal/infrastructure/config"
+	"github.com/epicsagas/korean-geocode/internal/infrastructure/metrics"
 	"github.com/epicsagas/korean-geocode/internal/infrastructure/ratelimit"
 	"github.com/epicsagas/korean-geocode/pkg/domain"
 	"github.com/epicsagas/korean-geocode/pkg/provider"
@@ -75,9 +76,15 @@ func main() {
 		if cfg.VWorld.DailyQuota > 0 {
 			redisLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
 		}
-		redisLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
-		if cfg.Naver.DailyQuota > 0 {
-			redisLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		if cfg.Kakao.DailyQuota > 0 {
+			redisLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		}
+		if cfg.Naver.ClientID != "" && cfg.Naver.ClientSecret != "" {
+			if cfg.Naver.DailyQuota > 0 {
+				redisLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+			} else {
+				redisLimiter.SetQuota("naver", 600) // Default: 600/month free tier
+			}
 		}
 		if cfg.Google.MonthlyQuota > 0 {
 			redisLimiter.SetQuota("google", cfg.Google.MonthlyQuota)
@@ -97,9 +104,15 @@ func main() {
 		if cfg.VWorld.DailyQuota > 0 {
 			sqliteLimiter.SetQuota("vworld", cfg.VWorld.DailyQuota)
 		}
-		sqliteLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
-		if cfg.Naver.DailyQuota > 0 {
-			sqliteLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+		if cfg.Kakao.DailyQuota > 0 {
+			sqliteLimiter.SetQuota("kakao", cfg.Kakao.DailyQuota)
+		}
+		if cfg.Naver.ClientID != "" && cfg.Naver.ClientSecret != "" {
+			if cfg.Naver.DailyQuota > 0 {
+				sqliteLimiter.SetQuota("naver", cfg.Naver.DailyQuota)
+			} else {
+				sqliteLimiter.SetQuota("naver", 600) // Default: 600/month free tier
+			}
 		}
 		if cfg.Google.MonthlyQuota > 0 {
 			sqliteLimiter.SetQuota("google", cfg.Google.MonthlyQuota)
@@ -107,6 +120,28 @@ func main() {
 
 		rateLimiter = sqliteLimiter
 		log.Println("✅ SQLite Rate Limiter initialized (./data/ratelimit.db)")
+	}
+
+	// Prometheus Exporter 초기화
+	activeProviders := []string{}
+	if cfg.Google.APIKey != "" {
+		activeProviders = append(activeProviders, "google")
+	}
+	if cfg.Kakao.APIKey != "" {
+		activeProviders = append(activeProviders, "kakao")
+	}
+	if cfg.VWorld.APIKey != "" {
+		activeProviders = append(activeProviders, "vworld")
+	}
+	if cfg.Naver.ClientID != "" && cfg.Naver.ClientSecret != "" {
+		activeProviders = append(activeProviders, "naver")
+	}
+
+	metricsExporter := metrics.NewExporter(rateLimiter, activeProviders)
+	if err := metricsExporter.Register(); err != nil {
+		log.Printf("⚠️  Failed to register Prometheus exporter: %v", err)
+	} else {
+		log.Println("✅ Prometheus metrics exporter registered (/metrics)")
 	}
 
 	// Provider 초기화 및 Circuit Breaker, Rate Limiter 적용

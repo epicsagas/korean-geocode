@@ -58,6 +58,11 @@ func LoadConfig() (*Config, error) {
 			RedisPassword: viper.GetString("redis.password"),
 			RedisDB:       viper.GetInt("redis.db"),
 		},
+		Analytics: AnalyticsConfig{
+			Driver:        viper.GetString("analytics.driver"),
+			DSN:           viper.GetString("analytics.dsn"),
+			RetentionDays: viper.GetInt("analytics.retention_days"),
+		},
 		KoreanProviderOrder: parseProviderOrder(viper.GetString("korean.provider_order")),
 		GlobalProviderOrder: parseProviderOrder(viper.GetString("global.provider_order")),
 	}
@@ -106,6 +111,10 @@ func setupViper() {
 	viper.BindEnv("redis.password", "REDIS_PASSWORD")
 	viper.BindEnv("redis.db", "REDIS_DB")
 
+	viper.BindEnv("analytics.driver", "DB_DRIVER")
+	viper.BindEnv("analytics.dsn", "DB_DSN")
+	viper.BindEnv("analytics.retention_days", "QUOTA_HISTORY_RETENTION_DAYS")
+
 	viper.BindEnv("korean.provider_order", "KOREAN_PROVIDER_ORDER")
 	viper.BindEnv("global.provider_order", "GLOBAL_PROVIDER_ORDER")
 
@@ -140,6 +149,11 @@ func setDefaults() {
 	viper.SetDefault("redis.port", "6379")
 	viper.SetDefault("redis.password", "")
 	viper.SetDefault("redis.db", 0)
+
+	// Analytics defaults
+	viper.SetDefault("analytics.driver", "sqlite")
+	viper.SetDefault("analytics.dsn", "./data/analytics.db")
+	viper.SetDefault("analytics.retention_days", 0) // 0 = unlimited
 
 	// Provider order defaults
 	viper.SetDefault("korean.provider_order", "vworld,kakao,naver,google")

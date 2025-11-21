@@ -6,6 +6,7 @@ import (
 	"github.com/epicsagas/korean-geocode/internal/handler/middleware"
 	"github.com/epicsagas/korean-geocode/internal/infrastructure/ratelimit"
 	"github.com/epicsagas/korean-geocode/pkg/router"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -22,6 +23,9 @@ func SetupRoutes(smartRouter *router.SmartRouter, rateLimiter ratelimit.RateLimi
 	mux.HandleFunc("/v1/geocode", geocodeHandler.Handle)
 	mux.HandleFunc("/v1/quota", quotaHandler.Handle)
 	mux.HandleFunc("/health", healthHandler.Handle)
+
+	// Prometheus metrics
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Swagger UI
 	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
